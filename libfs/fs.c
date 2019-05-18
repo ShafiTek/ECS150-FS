@@ -7,6 +7,17 @@
 #include "disk.h"
 #include "fs.h"
 
+//https://stackoverflow.com/questions/1644868/define-macro-for-debug-printing-in-c
+// MACRO for printing error messages. Disabled when 0 and enabled when 1.
+// ! THIS IS DISABLED BEFORE SUBMISSION
+#define PRINT_ERROR 1 // * MODES: 0 - DISABLE, 1 - ENABLE
+#define print_error(...)                                               \
+	do                                                                 \
+	{                                                                  \
+		if (PRINT_ERROR)                                               \
+			fprintf(stderr, "%s: " fmt "\n", __func__, ##__VA_ARGS__); \
+	} while (0)
+
 /* TODO: Phase 1 */
 
 int fs_mount(const char *diskname)
