@@ -4,10 +4,10 @@
 
 ## BEFORE SUBMISSION:
 0. DISABLE debugging print flags (i.e `PRINT_ERROR`) in `fs.c`
-1. Delete `./test/fs_make.x` and `./test/fs_ref.x` and update `.gitignore`
+1. Delete `./test/ref_program` folder and update `.gitignore`
 2. Remove debugging files in the `./libfs/Makefile` if any.
 3. Remove `instructions` folder.
-4. Begin `git bundle` process.
+4. Do a final git push. Then begin `git bundle` process.
 ---
 
 ## Phase 1:

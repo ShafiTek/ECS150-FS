@@ -4,6 +4,7 @@
 *.x
 *.d
 *.a
+disk.fs
 
 #EXCEPT THESE FILES BUT DO REMOVE BEFORE SUBMISSION!
 !test/fs_make.x

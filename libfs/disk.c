@@ -138,7 +138,6 @@ int block_read(size_t block, void *buf)
 		perror("read");
 		return -1;
 	}
-
 	return 0;
 }
 
