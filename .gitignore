@@ -7,5 +7,5 @@
 disk.fs
 
 #EXCEPT THESE FILES BUT DO REMOVE BEFORE SUBMISSION!
-!test/fs_make.x
-!test/fs_ref.x
+!test/ref_program/fs_make.x
+!test/ref_program/fs_ref.x
