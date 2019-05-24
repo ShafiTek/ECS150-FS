@@ -13,7 +13,7 @@
 // https://stackoverflow.com/questions/1644868/define-macro-for-debug-printing-in-c
 // MACRO for printing error messages. Disabled when 0 and enabled when 1.
 // ! THIS MUST BE DISABLED BEFORE SUBMISSION
-#define PRINT_OUT 1 // * MODES: 0 - DISABLE, 1 - ENABLE
+#define PRINT_OUT 0 // * MODES: 0 - DISABLE, 1 - ENABLE
 #define print_out(fmt, ...)                                            \
 	do                                                                 \
 	{                                                                  \
@@ -169,12 +169,12 @@ int count_fat_entries(void)
 	return count;
 }
 /**
- * @brief  seek_blocks finds the index of the block to read/write based
+ * @brief  seek_blocks seeks to the index of the block to read/write based
  * 			on the offset provided.
  * @note   
  * @param  fd: file descriptor id
  * @param  offset: offset to read data from
- * @retval -1 if offset is out of bounds. Otherwise, return index of the 				block.
+ * @retval -1 if offset is out of bounds. Otherwise, return index of the 						block.
  */
 int seek_blocks(int fd, size_t offset)
 {
@@ -204,6 +204,37 @@ int seek_blocks(int fd, size_t offset)
 	}
 	OFT[fd].seeked_block = curr_block;
 	return curr_block;
+}
+/**
+ * @brief  add_fat_entry adds an entry to the FAT index, and updates the old
+ * 			EOF block to new entry and the new entry to EOF.
+ * @note   
+ * @param  eof_block: update the old EOF block.. 
+ * @retval -1 if no free blocks available. Otherwise returns the index of the
+ * 			new FAT entry.
+ */
+int add_fat_entry(int eof_block){
+	uint16_t entries = superblock.total_num_data_blocks;
+	if (count_fat_entries() >= entries)
+	{
+		// no space available in the FAT
+		return -1;
+	}
+	// find the first free entry in the FAT
+	size_t free_entry_idx = 0;
+	for (free_entry_idx = 0; free_entry_idx < entries; free_entry_idx++)
+	{
+		if (FAT[free_entry_idx] == 0)
+		{
+			break;
+		}
+	}
+	// replace EOF block with new FAT entry, and update new FAT entry with
+	// FAT EOC
+	FAT[free_entry_idx] = FAT_EOC;
+	FAT[eof_block] = free_entry_idx;
+
+	return free_entry_idx;
 }
 //*************************************
 // * IMPLEMENTATION
@@ -271,7 +302,7 @@ int fs_mount(const char *diskname)
 	}
 
 	// print out superblock, FAT, and root dir block
-	//pcd(6, 4);
+	//pcd(15, 0);
 
 	return 0;
 }
@@ -581,7 +612,110 @@ int fs_lseek(int fd, size_t offset)
 int fs_write(int fd, void *buf, size_t count)
 {
 	/* TODO: Phase 4 */
-	return 0;
+	if (OFT[fd].metadata == NULL || fd < 0 || fd > FS_OPEN_MAX_COUNT)
+	{
+		print_out("invalid file descriptor.\n");
+		return -1;
+	}
+	// get starting block id based on the offset
+	int start_blk_index = OFT[fd].seeked_block;
+	// if file is empty, then create a new entry in the FAT.
+	if(start_blk_index == FAT_EOC){
+		start_blk_index = add_fat_entry(start_blk_index);
+		if (start_blk_index < 0)
+		{
+			print_out("no free blocks available in the FAT.\n");
+			return -1;
+		}
+		OFT[fd].metadata->first_data_block_index = start_blk_index;
+	}
+
+	// get the offset of the block to read from
+	int offset = OFT[fd].offset - (BLOCK_SIZE * OFT[fd].blks_traversed);
+	if (offset < 0)
+	{
+		print_out("invalid offset: offset less than 1.\n");
+		return -1;
+	}
+
+	// the remaining bytes to write to the new block
+	// this variable holds remaining bytes to write in the current block, not
+	// overall bytes to write
+	int rem_bytes_to_write = BLOCK_SIZE - offset;
+	// count of how many bytes actually read so far
+	int bytes_written = 0;
+	// flag to end the writing
+	int writing_complete = 0;
+	// stores the next block index
+	int block_index = start_blk_index;
+	// stores the current block index
+	int block_index_curr = start_blk_index;
+
+	// holds the 'block' to write in this buffer
+	char block_buf[BLOCK_SIZE];
+
+	char *usr_buf = (char *)buf;
+
+	// read from the block buffer first. this is necessary since we need to 
+	// keep the old data in the buffer if reading from a different offset
+	if (block_read(superblock.data_block_start_index + block_index,
+				   block_buf) < 0)
+	{
+		print_out("read from old block failed.\n");
+		return bytes_written;
+	}
+
+	// logic for writing to from the data blocks
+	while (!writing_complete)
+	{
+		// store in usr_buf char by char until bytes_read is equal to the count
+		size_t i;
+		for (i = 0; i < rem_bytes_to_write; i++)
+		{
+			if (bytes_written + i >= count)
+			{
+				writing_complete = 1;
+				break;
+			}
+			block_buf[offset + i] = usr_buf[bytes_written + i];
+			OFT[fd].metadata->file_size++;
+		}
+
+		// read from the block and store it in `block_buf`
+		if (block_write(superblock.data_block_start_index + block_index,
+					   block_buf) < 0)
+		{
+			print_out("unable to write to new block.\n");
+			return bytes_written;
+		}
+
+		// reset remaining bytes to write to after the first write
+		rem_bytes_to_write = BLOCK_SIZE;
+		//reset offset to 0 after first write
+		offset = 0;
+		// update the total number of bytes written
+		bytes_written += i;
+		// store the current block index
+		block_index_curr = block_index;
+		// goto the next block index
+		block_index = FAT[block_index];
+
+		// if EOF is reached and writing has not completed, then extend file by 
+		// adding an entry in in the FAT
+		if (block_index == FAT_EOC && !writing_complete)
+		{
+			// update block index to the new block index
+			int new_fat_entry = add_fat_entry(block_index_curr);
+			if (new_fat_entry < 0)
+			{
+				print_out("no free blocks available in the FAT.\n");
+				return bytes_written;
+			}
+			block_index = new_fat_entry;
+			// also must update the file size somewhere
+		}
+	}
+	return bytes_written;
 }
 
 int fs_read(int fd, void *buf, size_t count)
@@ -603,25 +737,29 @@ int fs_read(int fd, void *buf, size_t count)
 	}
 
 	// the remaining bytes to read from the new block
+	// this variable holds remaining bytes read for the current block, not
+	// overall bytes to read
 	int rem_bytes_to_read = BLOCK_SIZE - offset;
+	// count of how many bytes actually read so far
 	int bytes_read = 0;
 	// flag to end the reading
 	int reading_complete = 0;
 	int block_index = start_blk_index;
 
+	// holds the 'block' read in this buffer
 	char block_buf[BLOCK_SIZE];
 
 	char *usr_buf = (char *) buf;
 
 	// logic for reading from the data blocks
 	while(!reading_complete){
-		// if somehow EOF is reached, end any reading
-		if (block_index == FAT_EOC)
-		{
-			break;
-		}
 		// read from the block and store it in `block_buf`
-		block_read(superblock.data_block_start_index + block_index, block_buf);
+		if (block_read(superblock.data_block_start_index + block_index, 
+				block_buf) < 0)
+		{
+			print_out("block out of bounds, inaccessible.\n");
+			return bytes_read;
+		}
 
 		// store in usr_buf char by char until bytes_read is equal to the count
 		size_t i;
@@ -643,8 +781,12 @@ int fs_read(int fd, void *buf, size_t count)
 		bytes_read += i;
 		// goto the next block to read from
 		block_index = FAT[block_index];
-	}
 
+		// if somehow EOF is reached, end any reading
+		if (block_index == FAT_EOC)
+		{
+			break;
+		}
+	}
 	return bytes_read;
 }
-
