@@ -52,6 +52,15 @@ typedef struct __attribute__((__packed__)) DirectoryTableNode
 	uint8_t padding[10];
 } DirectoryTableNode;
 /**
+ * @brief  Structure to hold data of the opened file.
+ * @note   if `offset` = -1, then the node is uninitialized
+ */
+typedef struct OpenedFileNode {
+	DirectoryTableNode *metadata;
+	unsigned int offset;
+} OpenedFileNode;
+
+/**
  * @brief  File Allocation Table (FAT), initialized during `fs_mount()`.
  * @note   First element in the array is always FAT_EOC. Size of FAT is
  * 			is 2 x # of data blocks = # of FAT blocks. 
@@ -61,12 +70,19 @@ static uint16_t *FAT;
  * @brief Root directory table consisting of FS_FILE_MAX_COUNT entries.
  */
 static DirectoryTableNode RootDirectory[FS_FILE_MAX_COUNT];
+/**
+ * @brief  Opened File Table (OFT), contains pointers to all opened files, and
+ * 			the files' offset information.
+ * @note   The index of the array is the file descriptor number
+ */
+static OpenedFileNode OFT[FS_OPEN_MAX_COUNT];
 
 //*************************************
 // * GLOBAL VARIABLES
 //*************************************
 static Superblock superblock; // * Superblock instance
-uint16_t fat_size; // * size of FAT
+static uint16_t fat_size;	  // * size of FAT
+static uint8_t total_files_open; // * count of currently opened files
 
 //*************************************
 // ! DEBUG FUNCTIONS
@@ -129,7 +145,7 @@ int count_root_dir_nodes(void){
 			count++;
 		}
 	}
-	return FS_FILE_MAX_COUNT-count;
+	return count;
 }
 /**
  * @brief  iterate through all fat table entries and increment the counter
@@ -148,7 +164,7 @@ int count_fat_entries(void)
 			count++;
 		}
 	}
-	return superblock.total_num_data_blocks-count;
+	return count;
 }
 //*************************************
 // * IMPLEMENTATION
@@ -208,8 +224,15 @@ int fs_mount(const char *diskname)
 		return -1;
 	}
 
+	// clear opened file descriptor array by setting meta data ptr to NULL
+	for (size_t i = 0; i < FS_OPEN_MAX_COUNT; i++)
+	{
+		OFT[i].metadata = NULL;
+		OFT[i].offset = -1;
+	}
+
 	// print out superblock, FAT, and root dir block
-	//pcd(10, 3);
+	//pcd(10, 4);
 
 	return 0;
 }
@@ -255,26 +278,53 @@ int fs_umount(void)
 
 int fs_info(void)
 {
+	if (block_disk_count() < 0)
+	{
+		print_out("no virtual disk was open.\n");
+		return -1;
+	}
 	fprintf(stdout, "FS Info:\n");
 	fprintf(stdout, "total_blk_count=%d\n", superblock.total_num_blocks);
 	fprintf(stdout, "fat_blk_count=%d\n", superblock.num_block_fat);
 	fprintf(stdout, "rdir_blk=%d\n", superblock.root_dir_block_index);
 	fprintf(stdout, "data_blk=%d\n", superblock.data_block_start_index);
 	fprintf(stdout, "data_blk_count=%d\n", superblock.total_num_data_blocks);
-	fprintf(stdout, "fat_free_ratio=%d/%d\n", count_fat_entries(), 
-											superblock.total_num_data_blocks);
-	fprintf(stdout, "rdir_free_ratio=%d/%d\n", count_root_dir_nodes(), 
-											FS_FILE_MAX_COUNT);
+	fprintf(stdout, "fat_free_ratio=%d/%d\n", 
+						superblock.total_num_data_blocks-count_fat_entries(),
+						superblock.total_num_data_blocks);
+	fprintf(stdout, "rdir_free_ratio=%d/%d\n", 
+									FS_FILE_MAX_COUNT-count_root_dir_nodes(),
+									FS_FILE_MAX_COUNT);
 	return 0;
 }
 
 int fs_create(const char *filename)
 {
+	if (block_disk_count() < 0)
+	{
+		print_out("no virtual disk was open.\n");
+		return -1;
+	}
 	int filename_len = strlen(filename);
-	if (filename_len < 1 || filename_len > 16)
+	if (filename_len < 1 || filename_len > FS_FILENAME_LEN-1)
 	{
 		print_out("invalid filename.\n");
 		return -1;
+	}
+
+	if (count_root_dir_nodes() > FS_FILE_MAX_COUNT)
+	{
+		print_out("root directory full.\n");
+		return -1;
+	}
+
+	for (size_t i = 0; i < FS_FILE_MAX_COUNT; i++)
+	{
+		if (!strcmp((char *)RootDirectory[i].filename, filename))
+		{
+			print_out("file already exists with that name.\n");
+			return -1;
+		}
 	}
 
 	// search for an empty entry in the root directory
@@ -304,24 +354,10 @@ int fs_create(const char *filename)
 		i++;
 	}
 
-	// // set initial filesize
-	// RootDirectory[index_of_empty_entry].file_size = 0;
+	// set initial filesize
+	RootDirectory[index_of_empty_entry].file_size = 0;
 
-	// // find the first free block in the fat table
-	// uint16_t fat_entries = superblock.total_num_data_blocks;
-	// int fat_index = 0;
-	// for (size_t i = 1; i < fat_entries; i++)
-	// {
-	// 	if(FAT[i] == 0){
-	// 		fat_index = i;
-	// 		break;
-	// 	}
-	// }
-	// // update FAT entry to FAT_EOC
-	// FAT[fat_index] = FAT_EOC;
-	// // set the first data block index in the file's metadata
-	// RootDirectory[index_of_empty_entry].first_data_block_index = fat_index;
-
+	// set the first data block index to FAT_EOC
 	RootDirectory[index_of_empty_entry].first_data_block_index = FAT_EOC;
 
 	return 0;
@@ -329,15 +365,32 @@ int fs_create(const char *filename)
 
 int fs_delete(const char *filename)
 {
+	if (block_disk_count() < 0)
+	{
+		print_out("no virtual disk was open.\n");
+		return -1;
+	}
 	int filename_len = strlen(filename);
-	if (filename_len < 1)
+	if (filename_len < 1 || filename_len > FS_FILENAME_LEN)
 	{
 		print_out("invalid filename.\n");
 		return -1;
 	}
-	
-	int index_of_entry = -1;
+	// check if the file is currently open
+	for (size_t i = 0; i < FS_OPEN_MAX_COUNT; i++)
+	{
+		if (OFT[i].metadata != NULL)
+		{
+			if (!strcmp((char *)OFT[i].metadata->filename, filename))
+			{
+				print_out("cannot delete. file currently open.\n");
+				return -1;
+			}
+		}
+	}
 
+	// search for `filename` in the root directory and get its index
+	int index_of_entry = -1;
 	for (size_t i = 0; i < FS_FILE_MAX_COUNT; i++)
 	{
 		if (!strcmp((char *) RootDirectory[i].filename, filename))
@@ -375,6 +428,11 @@ int fs_delete(const char *filename)
 
 int fs_ls(void)
 {
+	if (block_disk_count() < 0)
+	{
+		print_out("no virtual disk was open.\n");
+		return -1;
+	}
 	fprintf(stdout, "FS Ls:\n");
 	for (size_t i = 0; i < FS_FILE_MAX_COUNT; i++)
 	{
@@ -391,25 +449,85 @@ int fs_ls(void)
 
 int fs_open(const char *filename)
 {
-	/* TODO: Phase 3 */
-	return 0;
+	if (total_files_open > FS_OPEN_MAX_COUNT)
+	{
+		print_out("Open file table full.\n");
+		return -1;
+	}
+
+	int filename_len = strlen(filename);
+	if (filename_len < 1 || filename_len > FS_FILENAME_LEN)
+	{
+		print_out("invalid filename.\n");
+		return -1;
+	}
+
+	int index_of_entry = -1;
+	for (size_t i = 0; i < FS_FILE_MAX_COUNT; i++)
+	{
+		if (!strcmp((char *)RootDirectory[i].filename, filename))
+		{
+			index_of_entry = i;
+			break;
+		}
+	}
+	if (index_of_entry < 0)
+	{
+		print_out("no entry found.\n");
+		return -1;
+	}
+	
+	int fd_index = -1;
+	// find the first free entry from OFT and get its index
+	for (size_t i = 0; i < FS_OPEN_MAX_COUNT; i++)
+	{
+		if (OFT[i].metadata == NULL)
+		{
+			fd_index = i;
+			break;
+		}
+	}
+
+	OFT[fd_index].metadata = &RootDirectory[index_of_entry];
+	OFT[fd_index].offset = 0;
+	total_files_open++;
+
+	return fd_index;
 }
 
 int fs_close(int fd)
 {
-	/* TODO: Phase 3 */
+	if (OFT[fd].metadata == NULL || fd < 0 || fd > FS_OPEN_MAX_COUNT)
+	{
+		print_out("invalid file descriptor.\n");
+		return -1;
+	}
+	OFT[fd].metadata = NULL;
+	OFT[fd].offset = 0;
+	total_files_open--;
 	return 0;
 }
 
 int fs_stat(int fd)
 {
-	/* TODO: Phase 3 */
-	return 0;
+	if (OFT[fd].metadata == NULL || fd < 0 || fd > FS_OPEN_MAX_COUNT)
+	{
+		print_out("invalid file descriptor.\n");
+		return -1;
+	}
+	return OFT[fd].metadata->file_size;
 }
 
 int fs_lseek(int fd, size_t offset)
 {
-	/* TODO: Phase 3 */
+	if (OFT[fd].metadata == NULL || fd < 0 || fd > FS_OPEN_MAX_COUNT)
+	{
+		print_out("invalid file descriptor.\n");
+		return -1;
+	}
+	// TODO: check if offset is invalid
+
+	OFT[fd].offset = offset;
 	return 0;
 }
 
