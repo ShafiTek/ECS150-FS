@@ -84,9 +84,12 @@ void pcd(int fat_print_amt, int root_dir_amt){
 	print_out("\n");
 	print_out("---SUPER BLOCK---\n");
 	print_out("Signature: %s\n", (char *)superblock.sig);
-	print_out("Total amount of blocks of virtual disk: %d\n", superblock.total_num_blocks);
-	print_out("Root directory block index: %d\n", superblock.root_dir_block_index);
-	print_out("Data block start index: %d\n", superblock.data_block_start_index);
+	print_out("Total amount of blocks of virtual disk: %d\n", 
+				superblock.total_num_blocks);
+	print_out("Root directory block index: %d\n", 
+				superblock.root_dir_block_index);
+	print_out("Data block start index: %d\n", 
+				superblock.data_block_start_index);
 	print_out("Amount of data blocks: %d\n", superblock.total_num_data_blocks);
 	print_out("Number of blocks for FAT: %d\n", superblock.num_block_fat);
 	print_out("\n");
@@ -101,7 +104,8 @@ void pcd(int fat_print_amt, int root_dir_amt){
 	{
 		print_out("Filename [%ld]: %s\n", i, (char *) RootDirectory[i].filename);
 		print_out("Filesize [%ld]: %d\n", i, RootDirectory[i].file_size);
-		print_out("Index of first data block [%ld]: %d\n", i, RootDirectory[i].first_data_block_index);
+		print_out("Index of first data block [%ld]: %d\n", i, 
+					RootDirectory[i].first_data_block_index);
 		print_out("\n");
 	}
 	print_out("-----DISK DATA END-----\n");
@@ -194,6 +198,7 @@ int fs_mount(const char *diskname)
 			return -1;
 		}
 	}
+	FAT[0] = FAT_EOC;
 
 	//* copy the root directory from disk
 	memset(RootDirectory, 0, BLOCK_SIZE);
@@ -216,6 +221,7 @@ int fs_umount(void)
 		print_out("no virtual disk was open.\n");
 		return -1;
 	}
+	// copy FAT blocks to disk
 	for (size_t i = 0; i < superblock.num_block_fat; i++)
 	{
 		if (block_write(i + 1, FAT + (i * BLOCK_SIZE / 2)))
@@ -224,13 +230,14 @@ int fs_umount(void)
 			return -1;
 		}
 	}
-
-	if (block_write(superblock.root_dir_block_index, (const void *) RootDirectory))
+	// copy root directory blocks to disk
+	if (block_write(superblock.root_dir_block_index, 
+									(const void *) RootDirectory))
 	{
 		print_out("unable to copy contents of the root directory to disk.\n");
 		return -1;
 	}
-
+	// copy superblock to disk
 	if (block_write(0, &superblock))
 	{
 		print_out("unable to write superblock to disk.\n");
@@ -248,37 +255,137 @@ int fs_umount(void)
 
 int fs_info(void)
 {
-	if (block_disk_count() < 0)
-	{
-		print_out("no virtual disk was open.\n");
-		return -1;
-	}
 	fprintf(stdout, "FS Info:\n");
 	fprintf(stdout, "total_blk_count=%d\n", superblock.total_num_blocks);
 	fprintf(stdout, "fat_blk_count=%d\n", superblock.num_block_fat);
 	fprintf(stdout, "rdir_blk=%d\n", superblock.root_dir_block_index);
 	fprintf(stdout, "data_blk=%d\n", superblock.data_block_start_index);
 	fprintf(stdout, "data_blk_count=%d\n", superblock.total_num_data_blocks);
-	fprintf(stdout, "fat_free_ratio=%d/%d\n", count_fat_entries(), superblock.total_num_data_blocks);
-	fprintf(stdout, "rdir_free_ratio=%d/%d\n", count_root_dir_nodes(), FS_FILE_MAX_COUNT);
+	fprintf(stdout, "fat_free_ratio=%d/%d\n", count_fat_entries(), 
+											superblock.total_num_data_blocks);
+	fprintf(stdout, "rdir_free_ratio=%d/%d\n", count_root_dir_nodes(), 
+											FS_FILE_MAX_COUNT);
 	return 0;
 }
 
 int fs_create(const char *filename)
 {
-	/* TODO: Phase 2 */
+	int filename_len = strlen(filename);
+	if (filename_len < 1 || filename_len > 16)
+	{
+		print_out("invalid filename.\n");
+		return -1;
+	}
+
+	// search for an empty entry in the root directory
+	int index_of_empty_entry = -1;
+	for (size_t i = 0; i < FS_FILE_MAX_COUNT; i++)
+	{
+		if (RootDirectory[i].filename[0] == '\0')
+		{
+			index_of_empty_entry = i;
+			break;
+		}
+	}
+	if (index_of_empty_entry < 0)
+	{
+		print_out("no free entry available.\n");
+		return -1;
+	}
+	
+	// reset the struct, empty old information
+	memset(&RootDirectory[index_of_empty_entry], 0, sizeof(DirectoryTableNode));
+
+	// copy filename
+	int i = 0;
+	while (i < filename_len)
+	{
+		RootDirectory[index_of_empty_entry].filename[i] = filename[i];
+		i++;
+	}
+
+	// // set initial filesize
+	// RootDirectory[index_of_empty_entry].file_size = 0;
+
+	// // find the first free block in the fat table
+	// uint16_t fat_entries = superblock.total_num_data_blocks;
+	// int fat_index = 0;
+	// for (size_t i = 1; i < fat_entries; i++)
+	// {
+	// 	if(FAT[i] == 0){
+	// 		fat_index = i;
+	// 		break;
+	// 	}
+	// }
+	// // update FAT entry to FAT_EOC
+	// FAT[fat_index] = FAT_EOC;
+	// // set the first data block index in the file's metadata
+	// RootDirectory[index_of_empty_entry].first_data_block_index = fat_index;
+
+	RootDirectory[index_of_empty_entry].first_data_block_index = FAT_EOC;
+
 	return 0;
 }
 
 int fs_delete(const char *filename)
 {
-	/* TODO: Phase 2 */
+	int filename_len = strlen(filename);
+	if (filename_len < 1)
+	{
+		print_out("invalid filename.\n");
+		return -1;
+	}
+	
+	int index_of_entry = -1;
+
+	for (size_t i = 0; i < FS_FILE_MAX_COUNT; i++)
+	{
+		if (!strcmp((char *) RootDirectory[i].filename, filename))
+		{
+			index_of_entry = i;
+			break;
+		}
+	}
+	if (index_of_entry < 0)
+	{
+		print_out("no entry found.\n");
+		return -1;
+	}
+
+	// * remove all data blocks from the FAT
+	// set current block = the starting block
+	uint16_t curr_block = RootDirectory[index_of_entry].first_data_block_index;
+	uint16_t tmp;
+	while (FAT[curr_block] != FAT_EOC)
+	{
+		tmp = FAT[curr_block]; // temporarily store the next block
+		FAT[curr_block] = 0; // free the current block
+		curr_block = tmp; // set next block to the current block
+	}
+	if (FAT[curr_block] == FAT_EOC)
+	{
+		FAT[curr_block] = 0;
+	}
+
+	// reset the struct, empty old information
+	memset(&RootDirectory[index_of_entry], 0, sizeof(DirectoryTableNode));
+
 	return 0;
 }
 
 int fs_ls(void)
 {
-	/* TODO: Phase 2 */
+	fprintf(stdout, "FS Ls:\n");
+	for (size_t i = 0; i < FS_FILE_MAX_COUNT; i++)
+	{
+		if (RootDirectory[i].filename[0] != '\0')
+		{
+			fprintf(stdout, "file: %s, size: %d, data_blk: %d\n",
+					RootDirectory[i].filename,
+					RootDirectory[i].file_size,
+					RootDirectory[i].first_data_block_index);
+		}
+	}
 	return 0;
 }
 
