@@ -120,6 +120,7 @@ void thread_fs_cat(void *arg)
 		die("Cannot malloc");
 	}
 
+	//fs_lseek(fs_fd, 100);
 	read = fs_read(fs_fd, buf, stat);
 
 	if (fs_close(fs_fd)) {

@@ -58,6 +58,8 @@ typedef struct __attribute__((__packed__)) DirectoryTableNode
 typedef struct OpenedFileNode {
 	DirectoryTableNode *metadata;
 	unsigned int offset;
+	unsigned int blks_traversed;
+	unsigned int seeked_block;
 } OpenedFileNode;
 
 /**
@@ -166,6 +168,43 @@ int count_fat_entries(void)
 	}
 	return count;
 }
+/**
+ * @brief  seek_blocks finds the index of the block to read/write based
+ * 			on the offset provided.
+ * @note   
+ * @param  fd: file descriptor id
+ * @param  offset: offset to read data from
+ * @retval -1 if offset is out of bounds. Otherwise, return index of the 				block.
+ */
+int seek_blocks(int fd, size_t offset)
+{
+	// traverse through the blocks based on the offset
+	int blks_traversed = 0;
+	while(offset > BLOCK_SIZE) {
+		offset -= BLOCK_SIZE;
+		blks_traversed++;
+	}
+
+	// return the first block if blocks traversed is 0
+	uint16_t curr_block = OFT[fd].metadata->first_data_block_index;
+	if (blks_traversed == 0)
+	{
+		return curr_block;
+	}
+
+	// else return the block index after some count of traversal
+	OFT[fd].blks_traversed = blks_traversed;
+	for (size_t i = 0; i < blks_traversed; i++)
+	{
+		curr_block = FAT[curr_block];
+		if (curr_block == FAT_EOC)
+		{ // offset is so high such that the user is trying to read beyond EOF
+			return -1;
+		}
+	}
+	OFT[fd].seeked_block = curr_block;
+	return curr_block;
+}
 //*************************************
 // * IMPLEMENTATION
 //*************************************
@@ -228,11 +267,11 @@ int fs_mount(const char *diskname)
 	for (size_t i = 0; i < FS_OPEN_MAX_COUNT; i++)
 	{
 		OFT[i].metadata = NULL;
-		OFT[i].offset = -1;
+		OFT[i].offset = 0;
 	}
 
 	// print out superblock, FAT, and root dir block
-	//pcd(10, 4);
+	//pcd(6, 4);
 
 	return 0;
 }
@@ -255,7 +294,7 @@ int fs_umount(void)
 	}
 	// copy root directory blocks to disk
 	if (block_write(superblock.root_dir_block_index, 
-									(const void *) RootDirectory))
+					(const void *) RootDirectory))
 	{
 		print_out("unable to copy contents of the root directory to disk.\n");
 		return -1;
@@ -293,8 +332,8 @@ int fs_info(void)
 						superblock.total_num_data_blocks-count_fat_entries(),
 						superblock.total_num_data_blocks);
 	fprintf(stdout, "rdir_free_ratio=%d/%d\n", 
-									FS_FILE_MAX_COUNT-count_root_dir_nodes(),
-									FS_FILE_MAX_COUNT);
+						FS_FILE_MAX_COUNT-count_root_dir_nodes(),
+						FS_FILE_MAX_COUNT);
 	return 0;
 }
 
@@ -490,6 +529,8 @@ int fs_open(const char *filename)
 
 	OFT[fd_index].metadata = &RootDirectory[index_of_entry];
 	OFT[fd_index].offset = 0;
+	OFT[fd_index].blks_traversed = 0;
+	OFT[fd_index].seeked_block = OFT[fd_index].metadata->first_data_block_index;
 	total_files_open++;
 
 	return fd_index;
@@ -504,6 +545,8 @@ int fs_close(int fd)
 	}
 	OFT[fd].metadata = NULL;
 	OFT[fd].offset = 0;
+	OFT[fd].blks_traversed = 0;
+	OFT[fd].seeked_block = 0;
 	total_files_open--;
 	return 0;
 }
@@ -525,7 +568,11 @@ int fs_lseek(int fd, size_t offset)
 		print_out("invalid file descriptor.\n");
 		return -1;
 	}
-	// TODO: check if offset is invalid
+	if (seek_blocks(fd, offset) < 0)
+	{
+		print_out("invalid seek offset.\n");
+		return -1;
+	}
 
 	OFT[fd].offset = offset;
 	return 0;
@@ -539,7 +586,65 @@ int fs_write(int fd, void *buf, size_t count)
 
 int fs_read(int fd, void *buf, size_t count)
 {
-	/* TODO: Phase 4 */
-	return 0;
+	if (OFT[fd].metadata == NULL || fd < 0 || fd > FS_OPEN_MAX_COUNT)
+	{
+		print_out("invalid file descriptor.\n");
+		return -1;
+	}
+	// get starting block id based on the offset
+	int start_blk_index = OFT[fd].seeked_block;
+
+	// get the offset of the block to read from
+	int offset = OFT[fd].offset - (BLOCK_SIZE * OFT[fd].blks_traversed);
+	if (offset < 0)
+	{
+		print_out("invalid offset: offset less than 1.\n");
+		return -1;
+	}
+
+	// the remaining bytes to read from the new block
+	int rem_bytes_to_read = BLOCK_SIZE - offset;
+	int bytes_read = 0;
+	// flag to end the reading
+	int reading_complete = 0;
+	int block_index = start_blk_index;
+
+	char block_buf[BLOCK_SIZE];
+
+	char *usr_buf = (char *) buf;
+
+	// logic for reading from the data blocks
+	while(!reading_complete){
+		// if somehow EOF is reached, end any reading
+		if (block_index == FAT_EOC)
+		{
+			break;
+		}
+		// read from the block and store it in `block_buf`
+		block_read(superblock.data_block_start_index + block_index, block_buf);
+
+		// store in usr_buf char by char until bytes_read is equal to the count
+		size_t i;
+		for (i = 0; i < rem_bytes_to_read; i++)
+		{
+			if (bytes_read + i >= count)
+			{
+				reading_complete = 1;
+				break;
+			}
+			usr_buf[bytes_read+i] = block_buf[offset + i];
+		}
+
+		// reset remaining bytes to read from after the first read
+		rem_bytes_to_read = BLOCK_SIZE;
+		//reset offset to 0 after first read
+		offset = 0;
+		// update the total number of bytes read
+		bytes_read += i;
+		// goto the next block to read from
+		block_index = FAT[block_index];
+	}
+
+	return bytes_read;
 }
 
