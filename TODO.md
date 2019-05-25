@@ -7,7 +7,8 @@
 1. Delete `./test/ref_program` folder and update `.gitignore`
 2. Remove debugging files in the `./libfs/Makefile` if any.
 3. Remove `instructions` folder.
-4. Do a final git push. Then begin `git bundle` process.
+4. Delete this file.
+5. Do a final git push. Then begin `git bundle` process.
 ---
 
 ## Phase 1:

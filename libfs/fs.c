@@ -123,7 +123,7 @@ void pcd(int fat_print_amt, int root_dir_amt){
 		print_out("Filename [%ld]: %s\n", i, (char *) RootDirectory[i].filename);
 		print_out("Filesize [%ld]: %d\n", i, RootDirectory[i].file_size);
 		print_out("Index of first data block [%ld]: %d\n", i, 
-					RootDirectory[i].first_data_block_index);
+			RootDirectory[i].first_data_block_index);
 		print_out("\n");
 	}
 	print_out("-----DISK DATA END-----\n");
@@ -174,7 +174,7 @@ int count_fat_entries(void)
  * @note   
  * @param  fd: file descriptor id
  * @param  offset: offset to read data from
- * @retval -1 if offset is out of bounds. Otherwise, return index of the 						block.
+ * @retval -1 if offset is out of bounds. Otherwise, return index of the block.
  */
 int seek_blocks(int fd, size_t offset)
 {
@@ -325,7 +325,7 @@ int fs_umount(void)
 	}
 	// copy root directory blocks to disk
 	if (block_write(superblock.root_dir_block_index, 
-					(const void *) RootDirectory))
+			(const void *) RootDirectory))
 	{
 		print_out("unable to copy contents of the root directory to disk.\n");
 		return -1;
@@ -360,11 +360,11 @@ int fs_info(void)
 	fprintf(stdout, "data_blk=%d\n", superblock.data_block_start_index);
 	fprintf(stdout, "data_blk_count=%d\n", superblock.total_num_data_blocks);
 	fprintf(stdout, "fat_free_ratio=%d/%d\n", 
-						superblock.total_num_data_blocks-count_fat_entries(),
-						superblock.total_num_data_blocks);
+			superblock.total_num_data_blocks-count_fat_entries(),
+			superblock.total_num_data_blocks);
 	fprintf(stdout, "rdir_free_ratio=%d/%d\n", 
-						FS_FILE_MAX_COUNT-count_root_dir_nodes(),
-						FS_FILE_MAX_COUNT);
+			FS_FILE_MAX_COUNT-count_root_dir_nodes(),
+			FS_FILE_MAX_COUNT);
 	return 0;
 }
 
@@ -617,6 +617,10 @@ int fs_write(int fd, void *buf, size_t count)
 		print_out("invalid file descriptor.\n");
 		return -1;
 	}
+
+	// flag for updating file size
+	int update_file_size = 0;
+
 	// get starting block id based on the offset
 	int start_blk_index = OFT[fd].seeked_block;
 	// if file is empty, then create a new entry in the FAT.
@@ -628,6 +632,7 @@ int fs_write(int fd, void *buf, size_t count)
 			return -1;
 		}
 		OFT[fd].metadata->first_data_block_index = start_blk_index;
+		update_file_size = 1;
 	}
 
 	// get the offset of the block to read from
@@ -678,7 +683,10 @@ int fs_write(int fd, void *buf, size_t count)
 				break;
 			}
 			block_buf[offset + i] = usr_buf[bytes_written + i];
-			OFT[fd].metadata->file_size++;
+			if (update_file_size == 1)
+			{ // if new block allocated, then update filesize
+				OFT[fd].metadata->file_size++;
+			}
 		}
 
 		// read from the block and store it in `block_buf`
@@ -712,7 +720,8 @@ int fs_write(int fd, void *buf, size_t count)
 				return bytes_written;
 			}
 			block_index = new_fat_entry;
-			// also must update the file size somewhere
+			// set update file size
+			update_file_size = 1;
 		}
 	}
 	return bytes_written;
