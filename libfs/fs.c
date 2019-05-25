@@ -299,6 +299,8 @@ int fs_mount(const char *diskname)
 	{
 		OFT[i].metadata = NULL;
 		OFT[i].offset = 0;
+		OFT[i].seeked_block = 0;
+		OFT[i].blks_traversed = 0;
 	}
 
 	// print out superblock, FAT, and root dir block
@@ -317,6 +319,10 @@ int fs_umount(void)
 	// copy FAT blocks to disk
 	for (size_t i = 0; i < superblock.num_block_fat; i++)
 	{
+		// since FAT is of uint16_t (2 bytes) type, pointer arithmetic is
+		// evaluted such that (FAT + i) would actually jump 2i bytes instead of
+		// i bytes. so we must divide by 2. FAT block starts at BLOCK #2 in
+		// ECS150-FS.
 		if (block_write(i + 1, FAT + (i * BLOCK_SIZE / 2)))
 		{
 			print_out("unable to copy contents of FAT to disk.\n");
@@ -569,6 +575,11 @@ int fs_open(const char *filename)
 
 int fs_close(int fd)
 {
+	if (total_files_open < 0)
+	{
+		print_out("Open file table already empty.\n");
+		return -1;
+	}
 	if (OFT[fd].metadata == NULL || fd < 0 || fd > FS_OPEN_MAX_COUNT)
 	{
 		print_out("invalid file descriptor.\n");
