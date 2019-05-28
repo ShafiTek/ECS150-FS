@@ -678,18 +678,18 @@ int fs_write(int fd, void *buf, size_t count)
 
 	char *usr_buf = (char *)buf;
 
-	// read from the block buffer first. this is necessary since we need to 
-	// keep the old data in the buffer if reading from a different offset
-	if (block_read(superblock.data_block_start_index + block_index,
-				   block_buf) < 0)
-	{
-		print_out("read from old block failed.\n");
-		return bytes_written;
-	}
-
 	// logic for writing to from the data blocks
 	while (!writing_complete)
 	{
+		// read from the block buffer first. this is necessary since we need to
+		// keep the old data in the buffer if reading from a different offset
+		if (block_read(superblock.data_block_start_index + block_index,
+					   block_buf) < 0)
+		{
+			print_out("read from old block failed.\n");
+			return bytes_written;
+		}
+		
 		// store in usr_buf char by char until bytes_read is equal to the count
 		size_t i;
 		for (i = 0; i < rem_bytes_to_write; i++)
