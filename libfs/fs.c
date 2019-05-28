@@ -316,6 +316,12 @@ int fs_umount(void)
 		print_out("no virtual disk was open.\n");
 		return -1;
 	}
+
+	if (total_files_open > 0)
+	{
+		print_out("there are files open. cannot close.\n");
+		return -1;
+	}
 	// copy FAT blocks to disk
 	for (size_t i = 0; i < superblock.num_block_fat; i++)
 	{
@@ -388,7 +394,7 @@ int fs_create(const char *filename)
 		return -1;
 	}
 
-	if (count_root_dir_nodes() > FS_FILE_MAX_COUNT)
+	if (count_root_dir_nodes() == FS_FILE_MAX_COUNT)
 	{
 		print_out("root directory full.\n");
 		return -1;
@@ -525,7 +531,7 @@ int fs_ls(void)
 
 int fs_open(const char *filename)
 {
-	if (total_files_open > FS_OPEN_MAX_COUNT)
+	if (total_files_open == FS_OPEN_MAX_COUNT)
 	{
 		print_out("Open file table full.\n");
 		return -1;
