@@ -1,13 +1,16 @@
 # Target library
 lib := libfs.a
 objects := disk.o fs.o
-dependencies := disk.d fs.d
 
 CC      := gcc
 CFLAGS  := -Wall -Werror
 
 # Generate dependencies
 DEPFLAGS = -MMD -MF $(@:.o=.d)
+
+# Include dependencies
+deps := $(patsubst %.o,%.d,$(objects))
+-include $(deps)
 
 all: $(lib)
 
@@ -21,4 +24,4 @@ $(lib): $(objects)
 
 clean:
 	@echo "CLEANING FILES"
-	rm -f $(lib) $(objects) $(dependencies)
+	rm -f $(lib) $(objects) $(deps)
