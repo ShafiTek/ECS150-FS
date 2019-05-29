@@ -1,0 +1,13 @@
+In this first phase, you must implement the function fs_mount() and fs_umount().
+
+fs_mount() makes the file system contained in the specified virtual disk “ready to be used”. You need to open the virtual disk, using the block API, and load the meta-information that is necessary to handle the file system operations described in the following phases. fs_umount() makes sure that the virtual disk is properly closed and that all the internal data structures of the FS layer are properly cleaned.
+
+For this phase, you should probably start by defining the data structures corresponding to the blocks containing the meta-information about the file system (superblock, FAT and root directory).
+
+In order to correctly describe these data structures, you will probably need to use the integer types defined in stdint.h, such as int8_t, uint8_t, uint16_t, etc. Also, when describing your data structures and in order to avoid the compiler to interfere with their layout, it’s always good practice to attach the attribute packed to these data structures.
+
+Don’t forget that your function fs_mount() should perform some error checking in order to verify that the file system has the expected format. For example, the signature of the file system should correspond to the one defined by the specifications, the total amount of block should correspond to what block_disk_count() returns, etc.
+
+Once you’re able to mount a file system, you can implement the function fs_info() which prints some information about the mounted file system and make sure that the output corresponds exactly to the reference program.
+
+It is important to observe that the file system must provide persistent storage. Let’s assume that you have created a file system on a virtual disk and mounted it. Then, you create a few files and write some data to them. Finally, you unmount the file system. At this point, all data must be written onto the virtual disk. Another application that mounts the file system at a later point in time must see the previously created files and the data that was written. This means that whenever umount_fs() is called, all meta-information and file data must have been written out to disk.

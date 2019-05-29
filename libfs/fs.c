@@ -186,6 +186,7 @@ int seek_blocks(int fd, size_t offset)
 	}
 
 	// return the first block if blocks traversed is 0
+	OFT[fd].blks_traversed = blks_traversed;
 	uint16_t curr_block = OFT[fd].metadata->first_data_block_index;
 	if (blks_traversed == 0)
 	{
@@ -193,7 +194,6 @@ int seek_blocks(int fd, size_t offset)
 	}
 
 	// else return the block index after some count of traversal
-	OFT[fd].blks_traversed = blks_traversed;
 	for (size_t i = 0; i < blks_traversed; i++)
 	{
 		curr_block = FAT[curr_block];

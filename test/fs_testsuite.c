@@ -12,6 +12,7 @@
 #include <fs.h>
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+#define LOREM_SIZE 4096
 
 #define test_fs_error(fmt, ...) \
 	fprintf(stderr, "%s: "fmt"\n", __func__, ##__VA_ARGS__)
@@ -28,60 +29,15 @@ do {							\
 	exit(1);					\
 } while (0)
 
+char insert_buff[LOREM_SIZE];
+void insert_lorem();
 
 struct thread_arg {
 	int argc;
 	char **argv;
 };
 
-void thread_fs_stat(void *arg)
-{
-	struct thread_arg *t_arg = arg;
-	char *diskname, *filename;
-	int fs_fd;
-	int stat;
-
-	if (t_arg->argc < 2)
-		die("need <diskname> <filename>");
-
-	diskname = t_arg->argv[0];
-	filename = t_arg->argv[1];
-
-	if (fs_mount(diskname))
-		die("Cannot mount diskname");
-
-	fs_fd = fs_open(filename);
-	if (fs_fd < 0) {
-		fs_umount();
-		die("Cannot open file");
-	}
-
-	stat = fs_stat(fs_fd);
-	if (stat < 0) {
-		fs_close(fs_fd);
-		fs_umount();
-		die("Cannot stat file");
-	}
-	if (!stat) {
-		fs_close(fs_fd);
-		fs_umount();
-		/* Nothing to read, file is empty */
-		printf("Empty file\n");
-		return;
-	}
-
-	if (fs_close(fs_fd)) {
-		fs_umount();
-		die("Cannot close file");
-	}
-
-	if (fs_umount())
-		die("cannot unmount diskname");
-
-	printf("Size of file '%s' is %d bytes\n", filename, stat);
-}
-
-void thread_fs_cat(void *arg)
+void thread_fs_offread(void *arg)
 {
 	struct thread_arg *t_arg = arg;
 	char *diskname, *filename, *buf;
@@ -120,6 +76,12 @@ void thread_fs_cat(void *arg)
 		die("Cannot malloc");
 	}
 
+	if (fs_lseek(fs_fd, 3000) < 0)
+	{
+		fs_umount();
+		die("Cannot seek to file");
+	}
+
 	read = fs_read(fs_fd, buf, stat);
 
 	if (fs_close(fs_fd)) {
@@ -137,32 +99,7 @@ void thread_fs_cat(void *arg)
 	free(buf);
 }
 
-void thread_fs_rm(void *arg)
-{
-	struct thread_arg *t_arg = arg;
-	char *diskname, *filename;
-
-	if (t_arg->argc < 2)
-		die("need <diskname> <filename>");
-
-	diskname = t_arg->argv[0];
-	filename = t_arg->argv[1];
-
-	if (fs_mount(diskname))
-		die("Cannot mount diskname");
-
-	if (fs_delete(filename)) {
-		fs_umount();
-		die("Cannot delete file");
-	}
-
-	if (fs_umount())
-		die("Cannot unmount diskname");
-
-	printf("Removed file '%s'\n", filename);
-}
-
-void thread_fs_add(void *arg)
+void thread_fs_rewrite(void *arg)
 {
 	struct thread_arg *t_arg = arg;
 	char *diskname, *filename, *buf;
@@ -185,10 +122,8 @@ void thread_fs_add(void *arg)
 	if (!S_ISREG(st.st_mode))
 		die("Not a regular file: %s\n", filename);
 
-	/* Map file into buffer */
-	buf = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-	if (!buf)
-		die_perror("mmap");
+	insert_lorem();
+	buf = insert_buff;
 
 	/* Now, deal with our filesystem:
 	 * - mount, create a new file, copy content of host file into this new
@@ -197,20 +132,23 @@ void thread_fs_add(void *arg)
 	if (fs_mount(diskname))
 		die("Cannot mount diskname");
 
-	if (fs_create(filename)) {
-		fs_umount();
-		die("Cannot create file");
-	}
-
 	fs_fd = fs_open(filename);
-	if (fs_fd < 0) {
+	if (fs_fd < 0)
+	{
 		fs_umount();
 		die("Cannot open file");
 	}
 
-	written = fs_write(fs_fd, buf, st.st_size);
+	if (fs_lseek(fs_fd, 3000) < 0)
+	{
+		fs_umount();
+		die("Cannot seek to file");
+	}
 
-	if (fs_close(fs_fd)) {
+	written = fs_write(fs_fd, buf, LOREM_SIZE);
+
+	if (fs_close(fs_fd))
+	{
 		fs_umount();
 		die("Cannot close file");
 	}
@@ -225,44 +163,47 @@ void thread_fs_add(void *arg)
 	close(fd);
 }
 
-void thread_fs_ls(void *arg)
+void thread_fs_edge(void *arg)
 {
 	struct thread_arg *t_arg = arg;
-	char *diskname;
+	char *diskname, *filename, *buf;
+	int fs_fd;
+	int stat, read;
 
-	if (t_arg->argc < 1)
-		die("Usage: <diskname> <filename>");
+	if (t_arg->argc < 2)
+		die("need <diskname> <filename>");
 
 	diskname = t_arg->argv[0];
+	filename = t_arg->argv[1];
 
 	if (fs_mount(diskname))
 		die("Cannot mount diskname");
 
-	fs_ls();
+	// EDGE CASE TESTING GOES HERE
+
+	fs_fd = fs_open(filename);
+	if (fs_fd < 0)
+	{
+		fs_umount();
+		die("Cannot open file");
+	}
+
+	// EDGE CASE TESTING GOES HERE
+	
+
+	if (fs_close(fs_fd))
+	{
+		fs_umount();
+		die("Cannot close file");
+	}
+
+	// EDGE CASE TESTING GOES HERE
 
 	if (fs_umount())
-		die("Cannot unmount diskname");
+		die("cannot unmount diskname");
+
+	free(buf);
 }
-
-void thread_fs_info(void *arg)
-{
-	struct thread_arg *t_arg = arg;
-	char *diskname;
-
-	if (t_arg->argc < 1)
-		die("Usage: <diskname>");
-
-	diskname = t_arg->argv[0];
-
-	if (fs_mount(diskname))
-		die("Cannot mount diskname");
-
-	fs_info();
-
-	if (fs_umount())
-		die("Cannot unmount diskname");
-}
-
 size_t get_argv(char *argv)
 {
 	long int ret = strtol(argv, NULL, 0);
@@ -275,13 +216,9 @@ static struct {
 	const char *name;
 	void(*func)(void *);
 } commands[] = {
-	{ "info",	thread_fs_info },
-	{ "ls",		thread_fs_ls },
-	{ "add",	thread_fs_add },
-	{ "rm",		thread_fs_rm },
-	{ "cat",	thread_fs_cat },
-	{ "stat",	thread_fs_stat }
-};
+	{"rewrite", thread_fs_rewrite},
+	{"off_read", thread_fs_offread},
+	{"check_edge_cases", thread_fs_edge}};
 
 void usage(char *program)
 {
@@ -325,4 +262,12 @@ int main(int argc, char **argv)
 	}
 
 	return 0;
+}
+void insert_lorem() {
+	char buff[LOREM_SIZE] = "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum. Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum. Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum. Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum. Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum. Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.Lorem Ipsum is simply dummy text of the printing and typesetting industry";
+
+	for (size_t i = 0; i < LOREM_SIZE; i++)
+	{
+		insert_buff[i] = buff[i];
+	}
 }

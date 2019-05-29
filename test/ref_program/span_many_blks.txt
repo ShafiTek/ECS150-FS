@@ -1,3 +1,5 @@
+In the last phase, you must implement fs_read() and fs_write() which respectively read from and write to a file.
+
 1 Changelog
 Note that the specifications for this project are subject to change at anytime for additional clarification. Make sure to always refer to the latest version.
 
@@ -208,5 +210,4 @@ These special cases happen mostly for small reading/writing operations, or at th
 
 7 Submission
 Since we will use auto-grading scripts in order to test your code, make sure that it strictly follows the specified output format. More specifically, your code should not print anything (include error messages) that has not been explicitly specified in this document.
-
 
