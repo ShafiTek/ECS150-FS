@@ -1,3 +1,9 @@
+/*
+Our test disk file contained a text file (size of 16,308 bytes). The commands
+`off_read` and `rewrite` in `fs_testsuite.c` are designed to operate on that 
+particular text file.
+*/
+
 #include <assert.h>
 #include <fcntl.h>
 #include <limits.h>

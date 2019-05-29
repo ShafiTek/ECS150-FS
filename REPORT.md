@@ -96,6 +96,9 @@ larger number of bytes than what is contained in the file. Lastly, we use assert
 for some unit tests like trying to unmount a disk while there are still open 
 file descriptors, creating a file with too long of a filename and closing a file
 with an invalid file descriptor.
+Note: our 'disk.fs' contained a text file (size of 16,308 bytes). The commands
+`off_read` and `rewrite` in `fs_testsuite.c` are designed to operate on that 
+particular text file.
 
 ## SOURCES
 1. https://www.gnu.org/software/libc/manual/
