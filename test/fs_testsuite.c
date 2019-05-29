@@ -40,7 +40,7 @@ struct thread_arg {
 void thread_fs_offread(void *arg)
 {
 	struct thread_arg *t_arg = arg;
-	char *diskname, *filename, *buf;
+	char *diskname, *filename, *buf, *buf2, *buf3;
 	int fs_fd;
 	int stat, read;
 
@@ -76,13 +76,37 @@ void thread_fs_offread(void *arg)
 		die("Cannot malloc");
 	}
 
+	buf2 = malloc(280);
+	if (!buf)
+	{
+		perror("malloc");
+		fs_umount();
+		die("Cannot malloc");
+	}
+	buf3 = malloc(230);
+	if (!buf)
+	{
+		perror("malloc");
+		fs_umount();
+		die("Cannot malloc");
+	}
+
 	if (fs_lseek(fs_fd, 3000) < 0)
 	{
 		fs_umount();
 		die("Cannot seek to file");
 	}
 
-	read = fs_read(fs_fd, buf, stat);
+	read = fs_read(fs_fd, buf, LOREM_SIZE);
+
+	fs_lseek(fs_fd, 16026);
+
+	fs_read(fs_fd, buf2, 275);
+
+	fs_lseek(fs_fd, 9142);
+
+	fs_read(fs_fd, buf3, 228);
+	// read = fs_read(fs_fd, buf, stat);
 
 	if (fs_close(fs_fd)) {
 		fs_umount();
@@ -93,10 +117,18 @@ void thread_fs_offread(void *arg)
 		die("cannot unmount diskname");
 
 	printf("Read file '%s' (%d/%d bytes)\n", filename, read, stat);
-	printf("Content of the file:\n");
-	printf("%.*s", (int)stat, buf);
+	printf("AT OFFSET 3000:\n");
+	printf("%.*s \n\n", (int)stat, buf);
+
+	printf("AT OFFSET 16029:\n");
+	printf("%.*s \n\n", (int)stat, buf2);
+
+	printf("AT OFFSET 9140:\n");
+	printf("%.*s \n\n", (int)stat, buf3);
 
 	free(buf);
+	free(buf2);
+	free(buf3);
 }
 
 void thread_fs_rewrite(void *arg)
@@ -166,9 +198,8 @@ void thread_fs_rewrite(void *arg)
 void thread_fs_edge(void *arg)
 {
 	struct thread_arg *t_arg = arg;
-	char *diskname, *filename, *buf;
+	char *diskname, *filename;
 	int fs_fd;
-	int stat, read;
 
 	if (t_arg->argc < 2)
 		die("need <diskname> <filename>");
@@ -201,8 +232,6 @@ void thread_fs_edge(void *arg)
 
 	if (fs_umount())
 		die("cannot unmount diskname");
-
-	free(buf);
 }
 size_t get_argv(char *argv)
 {
