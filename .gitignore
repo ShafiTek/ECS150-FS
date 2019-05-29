@@ -5,7 +5,10 @@
 *.d
 *.a
 disk.fs
+TODO.md
+instructions/
+test/ref_program/
 
 #EXCEPT THESE FILES BUT DO REMOVE BEFORE SUBMISSION!
-!test/ref_program/fs_make.x
-!test/ref_program/fs_ref.x
+#!test/ref_program/fs_make.x
+#!test/ref_program/fs_ref.x

@@ -205,18 +205,24 @@ void thread_fs_edge(void *arg)
 {
 	struct thread_arg *t_arg = arg;
 	char *diskname, *filename;
-	int fs_fd;
+	int fs_fd, fs_fd2;
 
+	// must supply an existing file in the disk!
 	if (t_arg->argc < 2)
 		die("need <diskname> <filename>");
 
 	diskname = t_arg->argv[0];
 	filename = t_arg->argv[1];
 
+	//no disk mounted
+	assert(fs_info());
+	assert(fs_ls());
+
 	if (fs_mount(diskname))
 		die("Cannot mount diskname");
 
-	// EDGE CASE TESTING GOES HERE
+	//file name too long
+	assert(fs_create("FileNameIsTooLong"));
 
 	fs_fd = fs_open(filename);
 	if (fs_fd < 0)
@@ -225,8 +231,17 @@ void thread_fs_edge(void *arg)
 		die("Cannot open file");
 	}
 
-	// EDGE CASE TESTING GOES HERE
-	
+	//cant unmount when currently open files
+	assert(fs_umount());
+
+	//can open same file twice
+	fs_fd2 = fs_open(filename);
+
+	//close duplicate file
+	fs_close(fs_fd2);
+
+	//can't delete currently open file
+	assert(fs_delete(filename));
 
 	if (fs_close(fs_fd))
 	{
@@ -234,11 +249,21 @@ void thread_fs_edge(void *arg)
 		die("Cannot close file");
 	}
 
-	// EDGE CASE TESTING GOES HERE
+	//invalid fd
+	assert(fs_close(200));
+
+	//already closed
+	assert(fs_close(fs_fd));
+
+	//invalid fd
+	assert(fs_stat(200));
 
 	if (fs_umount())
 		die("cannot unmount diskname");
+
+	printf("Edge Cases Testing Complete.\n");
 }
+
 size_t get_argv(char *argv)
 {
 	long int ret = strtol(argv, NULL, 0);

@@ -595,9 +595,14 @@ int fs_close(int fd)
 		print_out("Open file table already empty.\n");
 		return -1;
 	}
-	if (OFT[fd].metadata == NULL || fd < 0 || fd > FS_OPEN_MAX_COUNT)
+	if (fd < 0 || fd > FS_OPEN_MAX_COUNT)
 	{
 		print_out("invalid file descriptor.\n");
+		return -1;
+	}
+	if (OFT[fd].metadata == NULL)
+	{
+		print_out("metadata not found.\n");
 		return -1;
 	}
 	OFT[fd].metadata = NULL;
@@ -610,9 +615,14 @@ int fs_close(int fd)
 
 int fs_stat(int fd)
 {
-	if (OFT[fd].metadata == NULL || fd < 0 || fd > FS_OPEN_MAX_COUNT)
+	if (fd < 0 || fd > FS_OPEN_MAX_COUNT)
 	{
 		print_out("invalid file descriptor.\n");
+		return -1;
+	}
+	if (OFT[fd].metadata == NULL)
+	{
+		print_out("metadata not found.\n");
 		return -1;
 	}
 	return OFT[fd].metadata->file_size;
@@ -620,9 +630,14 @@ int fs_stat(int fd)
 
 int fs_lseek(int fd, size_t offset)
 {
-	if (OFT[fd].metadata == NULL || fd < 0 || fd > FS_OPEN_MAX_COUNT)
+	if (fd < 0 || fd > FS_OPEN_MAX_COUNT)
 	{
 		print_out("invalid file descriptor.\n");
+		return -1;
+	}
+	if (OFT[fd].metadata == NULL)
+	{
+		print_out("metadata not found.\n");
 		return -1;
 	}
 	if (seek_blocks(fd, offset) < 0)
@@ -638,9 +653,14 @@ int fs_lseek(int fd, size_t offset)
 int fs_write(int fd, void *buf, size_t count)
 {
 	/* TODO: Phase 4 */
-	if (OFT[fd].metadata == NULL || fd < 0 || fd > FS_OPEN_MAX_COUNT)
+	if (fd < 0 || fd > FS_OPEN_MAX_COUNT)
 	{
 		print_out("invalid file descriptor.\n");
+		return -1;
+	}
+	if (OFT[fd].metadata == NULL)
+	{
+		print_out("metadata not found.\n");
 		return -1;
 	}
 
@@ -756,9 +776,14 @@ int fs_write(int fd, void *buf, size_t count)
 
 int fs_read(int fd, void *buf, size_t count)
 {
-	if (OFT[fd].metadata == NULL || fd < 0 || fd > FS_OPEN_MAX_COUNT)
+	if (fd < 0 || fd > FS_OPEN_MAX_COUNT)
 	{
 		print_out("invalid file descriptor.\n");
+		return -1;
+	}
+	if (OFT[fd].metadata == NULL)
+	{
+		print_out("metadata not found.\n");
 		return -1;
 	}
 	// get starting block id based on the offset
