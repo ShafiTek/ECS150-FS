@@ -14,10 +14,10 @@
 // MACRO for printing error messages. Disabled when 0 and enabled when 1.
 // ! THIS MUST BE DISABLED BEFORE SUBMISSION
 #define PRINT_OUT 0 // * MODES: 0 - DISABLE, 1 - ENABLE
-#define print_out(fmt, ...)                                            \
-	do                                                                 \
-	{                                                                  \
-		if (PRINT_OUT)                                                 \
+#define print_out(fmt, ...)                                          \
+	do                                                               \
+	{                                                                \
+		if (PRINT_OUT)                                               \
 			fprintf(stderr, "%s: " fmt "", __func__, ##__VA_ARGS__); \
 	} while (0)
 
@@ -30,7 +30,8 @@
 /**
  * @brief The Superblock data structure definition
  */
-typedef struct __attribute__((__packed__)) Superblock {
+typedef struct __attribute__((__packed__)) Superblock
+{
 	uint8_t sig[8];
 	uint16_t total_num_blocks;
 	uint16_t root_dir_block_index;
@@ -55,7 +56,8 @@ typedef struct __attribute__((__packed__)) DirectoryTableNode
  * @brief  Structure to hold data of the opened file.
  * @note   if `offset` = -1, then the node is uninitialized
  */
-typedef struct OpenedFileNode {
+typedef struct OpenedFileNode
+{
 	DirectoryTableNode *metadata;
 	unsigned int offset;
 	unsigned int blks_traversed;
@@ -82,8 +84,8 @@ static OpenedFileNode OFT[FS_OPEN_MAX_COUNT];
 //*************************************
 // * GLOBAL VARIABLES
 //*************************************
-static Superblock superblock; // * Superblock instance
-static uint16_t fat_size;	  // * size of FAT
+static Superblock superblock;	// * Superblock instance
+static uint16_t fat_size;		 // * size of FAT
 static uint8_t total_files_open; // * count of currently opened files
 
 //*************************************
@@ -97,21 +99,22 @@ static uint8_t total_files_open; // * count of currently opened files
  * @param  root_dir_amt: amount of file data to print
  * @retval None
  */
-void pcd(int fat_print_amt, int root_dir_amt){
+void pcd(int fat_print_amt, int root_dir_amt)
+{
 	print_out("-----DISK DATA BEGIN-----\n");
 	print_out("\n");
 	print_out("---SUPER BLOCK---\n");
 	print_out("Signature: %s\n", (char *)superblock.sig);
-	print_out("Total amount of blocks of virtual disk: %d\n", 
-				superblock.total_num_blocks);
-	print_out("Root directory block index: %d\n", 
-				superblock.root_dir_block_index);
-	print_out("Data block start index: %d\n", 
-				superblock.data_block_start_index);
+	print_out("Total amount of blocks of virtual disk: %d\n",
+			  superblock.total_num_blocks);
+	print_out("Root directory block index: %d\n",
+			  superblock.root_dir_block_index);
+	print_out("Data block start index: %d\n",
+			  superblock.data_block_start_index);
 	print_out("Amount of data blocks: %d\n", superblock.total_num_data_blocks);
 	print_out("Number of blocks for FAT: %d\n", superblock.num_block_fat);
 	print_out("\n");
-		print_out("---FAT TABLE: first %d items---\n", fat_print_amt);
+	print_out("---FAT TABLE: first %d items---\n", fat_print_amt);
 	for (size_t i = 0; i < fat_print_amt; i++)
 	{
 		print_out("Index %ld: %d\n", i, *(FAT + i));
@@ -120,10 +123,10 @@ void pcd(int fat_print_amt, int root_dir_amt){
 	print_out("---ROOT DIR: first %d items---\n", root_dir_amt);
 	for (size_t i = 0; i < root_dir_amt; i++)
 	{
-		print_out("Filename [%ld]: %s\n", i, (char *) RootDirectory[i].filename);
+		print_out("Filename [%ld]: %s\n", i, (char *)RootDirectory[i].filename);
 		print_out("Filesize [%ld]: %d\n", i, RootDirectory[i].file_size);
-		print_out("Index of first data block [%ld]: %d\n", i, 
-			RootDirectory[i].first_data_block_index);
+		print_out("Index of first data block [%ld]: %d\n", i,
+				  RootDirectory[i].first_data_block_index);
 		print_out("\n");
 	}
 	print_out("-----DISK DATA END-----\n");
@@ -138,7 +141,8 @@ void pcd(int fat_print_amt, int root_dir_amt){
  * @note   
  * @retval returns the total number of elements in the root directory array
  */
-int count_root_dir_nodes(void){
+int count_root_dir_nodes(void)
+{
 	int count = 0;
 	for (size_t i = 0; i < FS_FILE_MAX_COUNT; i++)
 	{
@@ -180,12 +184,14 @@ int seek_blocks(int fd, size_t offset)
 {
 	// traverse through the blocks based on the offset
 	int blks_traversed = 0;
-	while(offset > BLOCK_SIZE) {
+	while (offset > BLOCK_SIZE)
+	{
 		offset -= BLOCK_SIZE;
 		blks_traversed++;
 	}
 
 	// return the first block if blocks traversed is 0
+	OFT[fd].blks_traversed = blks_traversed;
 	uint16_t curr_block = OFT[fd].metadata->first_data_block_index;
 	if (blks_traversed == 0)
 	{
@@ -193,7 +199,6 @@ int seek_blocks(int fd, size_t offset)
 	}
 
 	// else return the block index after some count of traversal
-	OFT[fd].blks_traversed = blks_traversed;
 	for (size_t i = 0; i < blks_traversed; i++)
 	{
 		curr_block = FAT[curr_block];
@@ -213,7 +218,8 @@ int seek_blocks(int fd, size_t offset)
  * @retval -1 if no free blocks available. Otherwise returns the index of the
  * 			new FAT entry.
  */
-int add_fat_entry(int eof_block){
+int add_fat_entry(int eof_block)
+{
 	uint16_t entries = superblock.total_num_data_blocks;
 	if (count_fat_entries() >= entries)
 	{
@@ -245,7 +251,8 @@ int fs_mount(const char *diskname)
 	memset(&superblock, 0, BLOCK_SIZE);
 	char *signature = "ECS150FS";
 
-	if(block_disk_open(diskname)){
+	if (block_disk_open(diskname))
+	{
 		print_out("disk cannot be opened.\n");
 		return -1;
 	}
@@ -258,7 +265,8 @@ int fs_mount(const char *diskname)
 
 	for (size_t i = 0; i < strlen(signature); i++)
 	{
-		if(signature[i] != (char) superblock.sig[i]){
+		if (signature[i] != (char)superblock.sig[i])
+		{
 			print_out("invalid signature.\n");
 			return -1;
 		}
@@ -268,7 +276,7 @@ int fs_mount(const char *diskname)
 		print_out("total number of blocks do not match.\n");
 		return -1;
 	}
-	
+
 	//* allocate File Allocation Table and copy its contents from disk
 	fat_size = superblock.num_block_fat * BLOCK_SIZE;
 	FAT = (uint16_t *)malloc(fat_size);
@@ -279,7 +287,8 @@ int fs_mount(const char *diskname)
 	memset(FAT, 0, fat_size);
 	for (size_t i = 0; i < superblock.num_block_fat; i++)
 	{
-		if (block_read(i + 1, FAT + (i * BLOCK_SIZE / 2))) {
+		if (block_read(i + 1, FAT + (i * BLOCK_SIZE / 2)))
+		{
 			print_out("unable to copy contents of the FAT from disk.\n");
 			return -1;
 		}
@@ -336,8 +345,8 @@ int fs_umount(void)
 		}
 	}
 	// copy root directory blocks to disk
-	if (block_write(superblock.root_dir_block_index, 
-			(const void *) RootDirectory))
+	if (block_write(superblock.root_dir_block_index,
+					(const void *)RootDirectory))
 	{
 		print_out("unable to copy contents of the root directory to disk.\n");
 		return -1;
@@ -371,11 +380,11 @@ int fs_info(void)
 	fprintf(stdout, "rdir_blk=%d\n", superblock.root_dir_block_index);
 	fprintf(stdout, "data_blk=%d\n", superblock.data_block_start_index);
 	fprintf(stdout, "data_blk_count=%d\n", superblock.total_num_data_blocks);
-	fprintf(stdout, "fat_free_ratio=%d/%d\n", 
-			superblock.total_num_data_blocks-count_fat_entries(),
+	fprintf(stdout, "fat_free_ratio=%d/%d\n",
+			superblock.total_num_data_blocks - count_fat_entries(),
 			superblock.total_num_data_blocks);
-	fprintf(stdout, "rdir_free_ratio=%d/%d\n", 
-			FS_FILE_MAX_COUNT-count_root_dir_nodes(),
+	fprintf(stdout, "rdir_free_ratio=%d/%d\n",
+			FS_FILE_MAX_COUNT - count_root_dir_nodes(),
 			FS_FILE_MAX_COUNT);
 	return 0;
 }
@@ -388,7 +397,7 @@ int fs_create(const char *filename)
 		return -1;
 	}
 	int filename_len = strlen(filename);
-	if (filename_len < 1 || filename_len > FS_FILENAME_LEN-1)
+	if (filename_len < 1 || filename_len > FS_FILENAME_LEN - 1)
 	{
 		print_out("invalid filename.\n");
 		return -1;
@@ -424,7 +433,7 @@ int fs_create(const char *filename)
 		print_out("no free entry available.\n");
 		return -1;
 	}
-	
+
 	// reset the struct, empty old information
 	memset(&RootDirectory[index_of_empty_entry], 0, sizeof(DirectoryTableNode));
 
@@ -475,7 +484,7 @@ int fs_delete(const char *filename)
 	int index_of_entry = -1;
 	for (size_t i = 0; i < FS_FILE_MAX_COUNT; i++)
 	{
-		if (!strcmp((char *) RootDirectory[i].filename, filename))
+		if (!strcmp((char *)RootDirectory[i].filename, filename))
 		{
 			index_of_entry = i;
 			break;
@@ -494,8 +503,8 @@ int fs_delete(const char *filename)
 	while (FAT[curr_block] != FAT_EOC)
 	{
 		tmp = FAT[curr_block]; // temporarily store the next block
-		FAT[curr_block] = 0; // free the current block
-		curr_block = tmp; // set next block to the current block
+		FAT[curr_block] = 0;   // free the current block
+		curr_block = tmp;	  // set next block to the current block
 	}
 	if (FAT[curr_block] == FAT_EOC)
 	{
@@ -558,7 +567,7 @@ int fs_open(const char *filename)
 		print_out("no entry found.\n");
 		return -1;
 	}
-	
+
 	int fd_index = -1;
 	// find the first free entry from OFT and get its index
 	for (size_t i = 0; i < FS_OPEN_MAX_COUNT; i++)
@@ -641,7 +650,8 @@ int fs_write(int fd, void *buf, size_t count)
 	// get starting block id based on the offset
 	int start_blk_index = OFT[fd].seeked_block;
 	// if file is empty, then create a new entry in the FAT.
-	if(start_blk_index == FAT_EOC){
+	if (start_blk_index == FAT_EOC)
+	{
 		start_blk_index = add_fat_entry(start_blk_index);
 		if (start_blk_index < 0)
 		{
@@ -678,18 +688,18 @@ int fs_write(int fd, void *buf, size_t count)
 
 	char *usr_buf = (char *)buf;
 
-	// read from the block buffer first. this is necessary since we need to 
-	// keep the old data in the buffer if reading from a different offset
-	if (block_read(superblock.data_block_start_index + block_index,
-				   block_buf) < 0)
-	{
-		print_out("read from old block failed.\n");
-		return bytes_written;
-	}
-
 	// logic for writing to from the data blocks
 	while (!writing_complete)
 	{
+		// read from the block buffer first. this is necessary since we need to
+		// keep the old data in the buffer if reading from a different offset
+		if (block_read(superblock.data_block_start_index + block_index,
+					   block_buf) < 0)
+		{
+			print_out("read from old block failed.\n");
+			return bytes_written;
+		}
+
 		// store in usr_buf char by char until bytes_read is equal to the count
 		size_t i;
 		for (i = 0; i < rem_bytes_to_write; i++)
@@ -708,7 +718,7 @@ int fs_write(int fd, void *buf, size_t count)
 
 		// read from the block and store it in `block_buf`
 		if (block_write(superblock.data_block_start_index + block_index,
-					   block_buf) < 0)
+						block_buf) < 0)
 		{
 			print_out("unable to write to new block.\n");
 			return bytes_written;
@@ -725,7 +735,7 @@ int fs_write(int fd, void *buf, size_t count)
 		// goto the next block index
 		block_index = FAT[block_index];
 
-		// if EOF is reached and writing has not completed, then extend file by 
+		// if EOF is reached and writing has not completed, then extend file by
 		// adding an entry in in the FAT
 		if (block_index == FAT_EOC && !writing_complete)
 		{
@@ -775,13 +785,14 @@ int fs_read(int fd, void *buf, size_t count)
 	// holds the 'block' read in this buffer
 	char block_buf[BLOCK_SIZE];
 
-	char *usr_buf = (char *) buf;
+	char *usr_buf = (char *)buf;
 
 	// logic for reading from the data blocks
-	while(!reading_complete){
+	while (!reading_complete)
+	{
 		// read from the block and store it in `block_buf`
-		if (block_read(superblock.data_block_start_index + block_index, 
-				block_buf) < 0)
+		if (block_read(superblock.data_block_start_index + block_index,
+					   block_buf) < 0)
 		{
 			print_out("block out of bounds, inaccessible.\n");
 			return bytes_read;
@@ -796,7 +807,7 @@ int fs_read(int fd, void *buf, size_t count)
 				reading_complete = 1;
 				break;
 			}
-			usr_buf[bytes_read+i] = block_buf[offset + i];
+			usr_buf[bytes_read + i] = block_buf[offset + i];
 		}
 
 		// reset remaining bytes to read from after the first read
